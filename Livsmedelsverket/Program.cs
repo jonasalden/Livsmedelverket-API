@@ -58,10 +58,10 @@ namespace Livsmedelsverket
 
                             var xmlDoc = new XmlDocument();
                             xmlDoc.LoadXml(response.Content);
-                            xmlDoc.Save($"{_rootPath}\\Livsmedelsverket\\{type}.xml");
+                            xmlDoc.Save($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}.xml");
 
                             Console.ForegroundColor = ConsoleColor.Green;
-                            Console.WriteLine($"Success! Saved file to {_rootPath}\\Livsmedelsverket\\{type}.xml");
+                            Console.WriteLine($"Success! Saved file to {_rootPath}\\Livsmedelsverket\\{type.ToLower()}.xml");
                         }
                         else
                         {

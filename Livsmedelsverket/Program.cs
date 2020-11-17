@@ -1,4 +1,5 @@
-﻿using RestSharp;
+﻿using Newtonsoft.Json;
+using RestSharp;
 using System;
 using System.IO;
 using System.Xml;
@@ -21,6 +22,13 @@ namespace Livsmedelsverket
             string selectedCategory = Console.ReadLine();
             bool success = int.TryParse(selectedCategory, out int category);
 
+            if (!success)
+            {
+                DoLog("Wrong format, Try again between 1 and 2", ConsoleColor.Red);
+                selectedCategory = Console.ReadLine();
+                success = int.TryParse(selectedCategory, out category);
+            }
+
             if (success)
             {
                 DoLog("Specify date for data: yyyy-MM-dd");
@@ -29,6 +37,13 @@ namespace Livsmedelsverket
 
                 var dateSuccess = DateTime.TryParse(dateval, out DateTime date);
 
+                if (!dateSuccess)
+                {
+                    DoLog("Wrong format, Try again: yyyy-MM-dd ", ConsoleColor.Red);
+                    dateval = Console.ReadLine();
+                    dateSuccess = DateTime.TryParse(dateval, out date);
+                }
+
                 if (dateSuccess)
                 {
                     var type = string.Empty;
@@ -36,16 +51,19 @@ namespace Livsmedelsverket
                     switch (category)
                     {
                         case 1:
-                            type = "Naringsvarde";
+                            type = ApiType.Nutrition;
                             break;
                         case 2:
-                            type = "Klassificering";
+                            type = ApiType.Classification;
+                            break;
+                        default:
+                            DoLog("Not a valid data selection", ConsoleColor.Red);
                             break;
                     }
 
                     var client = new RestClient(_apiUrl);
                     var request = new RestRequest($"{type}/{date:yyyy-MM-dd}", DataFormat.Xml);
-                    DoLog($"Trying to GET {type} data from {date:yyyy-MM-dd}");
+                    DoLog($"GET request: {type} from {date:yyyy-MM-dd}");
 
                     try
                     {
@@ -53,8 +71,8 @@ namespace Livsmedelsverket
 
                         if (response.IsSuccessful)
                         {
-                            DoLog("GET Data succeded.", ConsoleColor.Green);
-                            DoLog("Preparing XML.");
+                            DoLog("GET request succeded.", ConsoleColor.Green);
+                            DoLog("Preparing XML...");
 
                             var xmlDoc = new XmlDocument();
                             xmlDoc.LoadXml(response.Content);
@@ -64,7 +82,7 @@ namespace Livsmedelsverket
                             if (!directoryExist)
                             {
                                 DoLog($"Directory {_rootPath}\\Livsmedelsverket not found.", ConsoleColor.Yellow);
-                                DoLog("Do you want to create folder for the retrieved data? Y/N", ConsoleColor.Yellow);
+                                DoLog("Do you want to create a folder for the retrieved data? Y/N", ConsoleColor.Yellow);
 
                                 var answer = Console.ReadLine();
 
@@ -88,35 +106,47 @@ namespace Livsmedelsverket
                                 }
                             }
 
-                            if (File.Exists($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}.xml"))
+                            DoLog("Do you want JSON or XML format? JSON/XML", ConsoleColor.Yellow);
+                            string jsonOrXml = Console.ReadLine().ToLower().Trim();
+                            var ext = "xml";
+
+                            if (jsonOrXml == "json")
                             {
-                                DoLog("File exists, Do you want to override it? Y/N");
-                                var answer = Console.ReadLine();
-                                answer = answer.ToLower().Trim();
-                                DoLog("--------------", ConsoleColor.Green);
+                                ext = jsonOrXml;
+                            }
+
+                            if (File.Exists($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}.{ext}"))
+                            {
+                                DoLog("File exists, Do you want to override it? Y/N", ConsoleColor.Yellow);
+                                DoLog("--------------");
+
+                                var answer = Console.ReadLine().ToLower().Trim();
 
                                 if (answer == "y")
                                 {
-                                    xmlDoc.Save($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}.xml");
-                                    DoLog($"Success! Overrided {_rootPath}\\Livsmedelsverket\\{type.ToLower()}.xml", ConsoleColor.Green);
+                                    SaveFile(type, ext, xmlDoc);
+                                    DoLog($"Success! Overrided {_rootPath}\\Livsmedelsverket\\{type.ToLower()}.{ext}", ConsoleColor.Green);
                                 }
                                 else if (answer == "n")
                                 {
-                                    xmlDoc.Save($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}_{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.xml");
-                                    DoLog($"Success! Created {_rootPath}\\Livsmedelsverket\\{type.ToLower()}_{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.xml", ConsoleColor.Green);
+                                    SaveFile(type.ToLower() + $"_{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}", ext, xmlDoc);
+                                    DoLog($"Success! Created {_rootPath}\\Livsmedelsverket\\{type}_{DateTime.Now.ToString("yyyyMMddHHmmssFFF")}.{ext}", ConsoleColor.Green);
                                 }
                             }
                             else
                             {
-                                xmlDoc.Save($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}.xml");
-                                DoLog($"Success! Created {_rootPath}\\Livsmedelsverket\\{type.ToLower()}.xml", ConsoleColor.Green);
+                                SaveFile(type, ext, xmlDoc);
+                                DoLog($"Success! Created {_rootPath}\\Livsmedelsverket\\{type.ToLower()}.{ext}", ConsoleColor.Green);
                             }
+
+                            DoLog("Testing to read file and deserialize it to an C# object.", ConsoleColor.Cyan);
+
+                            // Print data from file.
                         }
                         else
                         {
-                            DoLog("Getting Data failed", ConsoleColor.Red);
+                            DoLog($"Error, StatusCode: {response.StatusCode}, Date: {date:yyyy-MM-dd}, Type: {type}", ConsoleColor.Red);
                         }
-
                     }
                     catch (Exception e)
                     {
@@ -139,6 +169,28 @@ namespace Livsmedelsverket
             Console.ForegroundColor = color;
             Console.WriteLine(text);
             Console.ResetColor();
+        }
+
+        public static void SaveFile(string type, string extension, XmlDocument xmlDoc)
+        {
+            switch (extension)
+            {
+                case "xml":
+                    xmlDoc.Save($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}.{extension}");
+                    break;
+                case "json":
+                    var json = JsonConvert.SerializeXmlNode(xmlDoc);
+                    File.WriteAllText($"{_rootPath}\\Livsmedelsverket\\{type.ToLower()}.{extension}", json);
+                    break;
+            }
+        }
+        #endregion
+
+        #region Classes
+        public static class ApiType
+        {
+            public const string Nutrition = "Naringsvarde";
+            public const string Classification = "Klassificering";
         }
         #endregion
     }
